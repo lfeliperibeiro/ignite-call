@@ -21,6 +21,8 @@ import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { getWeekDays } from '@/src/utils/get-week-days'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { convertTimeInStringToMinutes } from '@/src/utils/convert-time-in-string-to-minutes'
+import { api } from '@/src/lib/axios'
 
 const timeIntervalFormSchema = z.object({
   intervals: z
@@ -36,10 +38,32 @@ const timeIntervalFormSchema = z.object({
     .transform((intervals) => intervals.filter((interval) => interval.enabled))
     .refine((intervals) => intervals.length > 0, {
       message: 'Você precisa selecionar pelo menos um dia da semana!',
-    }),
+    })
+    .transform((intervals) => {
+      return intervals.map((interval) => {
+        return {
+          weekDay: interval.weekDay,
+          startTimeInMinutes: convertTimeInStringToMinutes(interval.startTime),
+          endTimeInMinutes: convertTimeInStringToMinutes(interval.endTime),
+        }
+      })
+    })
+    .refine(
+      (intervals) => {
+        return intervals.every(
+          (interval) =>
+            interval.endTimeInMinutes - 60 >= interval.startTimeInMinutes,
+        )
+      },
+      {
+        message:
+          'O horário de término deve ser pelo menos 1h distante do início',
+      },
+    ),
 })
 
-type TimeIntervalsFormData = z.infer<typeof timeIntervalFormSchema>
+type TimeIntervalsFormInput = z.input<typeof timeIntervalFormSchema>
+type TimeIntervalsFormOutput = z.output<typeof timeIntervalFormSchema>
 export default function TimeIntervals() {
   const {
     register,
@@ -47,7 +71,7 @@ export default function TimeIntervals() {
     control,
     watch,
     formState: { isSubmitting, errors },
-  } = useForm({
+  } = useForm<TimeIntervalsFormInput>({
     resolver: zodResolver(timeIntervalFormSchema),
     defaultValues: {
       intervals: [
@@ -71,8 +95,11 @@ export default function TimeIntervals() {
 
   const intervals = watch('intervals')
 
-  function handleSetTimeIntervals(data: TimeIntervalsFormData) {
-    console.log(data)
+  async function handleSetTimeIntervals(data: any) {
+    const { intervals } = data as TimeIntervalsFormOutput
+    await api.post('/users/time-intervals', {
+      intervals,
+    })
   }
 
   return (
